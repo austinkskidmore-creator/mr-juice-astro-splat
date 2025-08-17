@@ -1,0 +1,1008 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mr. Juice: Astro-Splat! (Asteroids Style)</title>
+    <!-- Tailwind CSS for UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #1a1a2e; /* Dark space background */
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            overflow: hidden;
+            color: #e0e0e0;
+        }
+
+        .game-container {
+            background-color: #0d0d1a; /* Even darker inner space */
+            border-radius: 1.5rem; /* Rounded corners */
+            box-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            display: flex;
+            flex-direction: column; /* Stack UI and Canvas vertically */
+            width: min(95vw, calc(90vh * 9 / 16)); /* Optimized for mobile portrait */
+            height: min(90vh, calc(95vw * 16 / 9));
+            max-width: 400px; /* Cap for desktop */
+            max-height: 700px; /* Cap for desktop */
+            overflow: hidden;
+            position: relative;
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(to bottom, #1a1a2e, #0d0d1a); /* Subtle gradient for depth */
+            /* Adjusted border-radius to match container's top UI */
+            border-radius: 0 0 1.5rem 1.5rem;
+            flex-grow: 1; /* Take available space */
+            width: 100%;
+            height: 100%;
+            cursor: crosshair; /* Indicate interactivity */
+        }
+
+        .ui-panel {
+            background-color: #2c0e5a; /* Darker purple for UI */
+            padding: 0.75rem 1rem;
+            display: flex; /* Make it a flex row */
+            justify-content: space-between; /* Space out items evenly */
+            align-items: center;
+            border-bottom: 2px solid #5a189a; /* Border at bottom of UI */
+            border-radius: 1.5rem 1.5rem 0 0; /* Rounded top corners only */
+            box-shadow: inset 0 -5px 10px rgba(0, 0, 0, 0.3); /* Shadow towards canvas */
+            flex-shrink: 0; /* Don't shrink */
+            width: 100%;
+            box-sizing: border-box; /* Include padding in width */
+            gap: 0.5rem; /* Gap between UI items */
+        }
+
+        .stat-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 0.25rem 0.5rem;
+            flex-shrink: 0; /* Prevent shrinking for fixed width items */
+        }
+
+        .stat-item.mess-meter-wrapper {
+            flex-grow: 1; /* Allow mess meter to take remaining space */
+            /* margin: 0 0.5rem; */ /* Removed margin, using gap in flex container */
+        }
+
+        .stat-label {
+            font-size: 0.7rem;
+            color: #bbb;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            white-space: nowrap; /* Prevent label from wrapping */
+        }
+
+        .stat-value {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: #ffe066; /* Bright yellow for values */
+            white-space: nowrap; /* Prevent value from wrapping */
+        }
+
+        .mess-meter-bar {
+            width: 100%; /* Full width of its container */
+            height: 14px; /* Slightly taller for better visibility (was 12px) */
+            background-color: #333;
+            border-radius: 7px; /* Match new height for perfect half-circle ends */
+            overflow: hidden;
+            margin-top: 0.25rem;
+            position: relative;
+            border: 1px solid #555;
+            flex-grow: 1; /* Allow the bar itself to grow */
+        }
+
+        .mess-meter-fill {
+            height: 100%;
+            background-color: #ff4d4d; /* Red for mess */
+            width: 0%; /* Starts empty, fills up */
+            border-radius: 6px;
+            transition: width 0.1s ease-out;
+            box-shadow: inset 0 0 5px rgba(255,0,0,0.5);
+            /* Health bar color transition: full green to empty red */
+            background-image: linear-gradient(to right, #00ff00, #fffa00, #ff4d4d);
+            transition: width 0.2s ease-out;
+        }
+
+        @keyframes mess-warning-pulse {
+            0% { box-shadow: inset 0 0 10px rgba(255,0,0,0.8); }
+            50% { box-shadow: inset 0 0 15px rgba(255,0,0,1); }
+            100% { box-shadow: inset 0 0 10px rgba(255,0,0,0.8); }
+        }
+        .mess-meter-fill.warning {
+            animation: mess-warning-pulse 0.8s infinite alternate;
+        }
+
+        .juice-bolt-button {
+            background-color: #8a2be2; /* Blue-violet */
+            color: white;
+            padding: 0.5rem 0.75rem; /* Smaller padding for UI panel */
+            border: none;
+            border-radius: 0.5rem; /* Smaller radius */
+            font-weight: bold;
+            font-size: 0.8rem; /* Smaller font */
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.5);
+            flex-shrink: 0; /* Prevent shrinking */
+        }
+
+        .juice-bolt-button:hover:not(:disabled) {
+            background-color: #9933ff; /* Lighter violet on hover */
+            transform: translateY(-1px);
+            box-shadow: 0 3px 5px rgba(0, 0, 0, 0.4);
+        }
+
+        .juice-bolt-button:disabled {
+            background-color: #555;
+            cursor: not-allowed;
+            opacity: 0.7;
+            box-shadow: none;
+        }
+
+        .juice-bolt-button.animate-pulse {
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.05); opacity: 0.8; }
+            100% { transform: scale(1); opacity: 1; } /* Ensure it returns to original state */
+        }
+
+        .game-over-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.85);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 100;
+            border-radius: 1.5rem;
+            text-align: center;
+        }
+
+        .game-over-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #ff4d4d; /* Red for game over */
+            margin-bottom: 1rem;
+            text-shadow: 0 0 10px #ff0000;
+        }
+
+        .final-score {
+            font-size: 1.5rem;
+            color: #ffe066;
+            margin-bottom: 2rem;
+        }
+
+        .restart-button {
+            background-color: #4CAF50; /* Green for restart */
+            color: white;
+            padding: 1rem 2rem;
+            border: none;
+            border-radius: 0.75rem;
+            font-size: 1.25rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .restart-button:hover {
+            background-color: #66bb6a; /* Lighter green on hover */
+            transform: translateY(-2px);
+            box-shadow: 0 6px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        /* Responsive adjustments */
+        @media (min-width: 640px) {
+            .game-container {
+                /* Fixed size on larger screens for consistent phone-like experience */
+                width: 400px;
+                height: 700px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <!-- UI Panel at the very top -->
+        <div class="ui-panel">
+            <div class="stat-item">
+                <div class="stat-label">Score</div>
+                <div id="scoreValue" class="stat-value">0</div>
+            </div>
+            
+            <!-- Mess Meter display (now central health bar) -->
+            <div class="stat-item mess-meter-wrapper">
+                <div class="stat-label">Mess Meter</div>
+                <div class="mess-meter-bar">
+                    <div id="messMeterFill" class="mess-meter-fill"></div>
+                </div>
+            </div>
+
+            <!-- Juice Bolt button -->
+            <button id="juiceBoltButton" class="juice-bolt-button" disabled>
+                Juice Bolt! (0)
+            </button>
+            <!-- Removed Lives Stat and Sound Toggle Button -->
+        </div>
+
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- Game Over Overlay (position absolute to cover canvas) -->
+        <div id="gameOverOverlay" class="game-over-overlay hidden">
+            <div class="game-over-title">GAME OVER!</div>
+            <div id="finalScore" class="final-score">Final Score: 0</div>
+            <button id="restartButton" class="restart-button">Restart Game</button>
+        </div>
+    </div>
+
+    <script>
+        // --- Game Setup ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        // UI elements
+        const scoreValueElem = document.getElementById('scoreValue');
+        const juiceBoltButton = document.getElementById('juiceBoltButton');
+        const messMeterFillElem = document.getElementById('messMeterFill'); // Mess meter element
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const finalScoreElem = document.getElementById('finalScore');
+        const restartButton = document.getElementById('restartButton');
+
+        // Game state variables
+        let player;
+        let asteroids = [];
+        let projectiles = [];
+        let powerUps = []; // For the visual power-up objects
+        let explosions = []; // For the Juice Bolt animation
+        let score = 0;
+        let juiceBoltCharges = 0; // New: Number of Juice Bolt charges
+        let messMeter = 0; // Mess Meter value (0-MAX_MESS). Now represents health.
+        const MAX_MESS = 100;
+        const MESS_WARNING_THRESHOLD = 30; // Warning starts when mess is LOW (30% remaining)
+        const MESS_PASSIVE_DECREASE_RATE = 0.1; // Mess decreases by 0.1 per second (was 0.15)
+        const MESS_MISSED_ASTEROID_PENALTY = 1; // Mess decrease from a missed asteroid (was 2)
+        const MESS_PLAYER_HIT_DAMAGE = 20; // Mess decrease when player gets hit (was 25)
+        const MESS_POWERUP_HEAL = 35; // Power-up *increases* mess (heals) by 35 units (was 30)
+
+        let gameActive = false;
+        let animationFrameId;
+
+        // Player properties
+        const PLAYER_SIZE = 15;
+        const PLAYER_COLOR = '#FFC107'; // Lemon yellow
+        const PLAYER_TURN_SPEED = 0.05; // Adjusted for less sensitivity
+        const PLAYER_THRUST_POWER = 0.2; // Increased for stronger thrust
+        const PLAYER_MAX_SPEED = 6; // Slightly higher max speed
+
+        // Projectile properties
+        const PROJECTILE_SPEED = 8; // Slightly faster projectiles
+        const PROJECTILE_SIZE = 3;
+        const PROJECTILE_COLOR = '#FFFF00';
+        const FIRE_RATE = 200; // ms
+        let lastShotTime = 0;
+
+        // Asteroid properties
+        const ASTEROID_MAX_SPEED = 1.0; // Reduced max speed for asteroids (was 2.0)
+        const ASTEROID_MIN_SIZE = 15;
+        const ASTEROID_MAX_SIZE = 40;
+        const ASTEROID_COLORS = ['#9370DB', '#00BFFF', '#FF69B4']; // Cosmic purple, blue, pink
+        const ASTEROID_BREAK_FACTOR = 0.6; // How much smaller new asteroids are
+
+        // Power-up properties (Charge Orb)
+        const POWER_UP_SIZE = 12;
+        const POWER_UP_COLOR = '#22DD22'; // Green for Charge Orb
+        const POWER_UP_DROP_CHANCE = 0.5; // 50% chance for a power-up to drop (was 0.4)
+
+        // Input state
+        let keys = {
+            ArrowLeft: false,
+            ArrowRight: false,
+            ArrowUp: false,
+            Space: false,
+        };
+        let touchThrustActive = false;
+        let touchRotateLeftActive = false;
+        let touchRotateRightActive = false;
+        let touchShootActive = false;
+
+        // --- Removed all Tone.js audio setup and related functions/variables ---
+
+        // --- Game Objects (Classes) ---
+
+        class Player {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = PLAYER_SIZE;
+                this.angle = -Math.PI / 2; // Pointing up initially
+                this.velocity = { x: 0, y: 0 };
+                this.thrusting = false;
+                this.blinking = false; // For invincibility after respawn
+                this.blinkTimer = 0;
+                this.invincibleDuration = 5000; // 5 seconds invincibility
+            }
+
+            draw() {
+                if (this.blinking && Math.floor(this.blinkTimer / 100) % 2 === 0) {
+                    return; // Skip drawing to create blink effect
+                }
+
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+
+                // Draw Mr. Juice as a lemon (sphere with a small cannon/straw)
+                ctx.beginPath();
+                ctx.arc(0, 0, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = PLAYER_COLOR;
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#FFD700'; // Yellow border
+                ctx.stroke();
+                ctx.closePath();
+
+                // Draw the "cannon" (a small rectangle extending from the front)
+                const cannonLength = this.radius * 0.8;
+                const cannonWidth = this.radius * 0.3;
+                ctx.fillStyle = '#888'; // Grey for cannon
+                ctx.fillRect(this.radius * 0.3, -cannonWidth / 2, cannonLength, cannonWidth);
+
+
+                // Draw thrust flame if thrusting
+                if (this.thrusting) {
+                    ctx.beginPath();
+                    ctx.moveTo(-PLAYER_SIZE * 1.2, 0); // Behind the ship
+                    ctx.lineTo(-PLAYER_SIZE * 1.8, -PLAYER_SIZE * 0.4);
+                    ctx.lineTo(-PLAYER_SIZE * 1.8, PLAYER_SIZE * 0.4);
+                    ctx.closePath();
+                    ctx.fillStyle = '#FF4500'; // Orange-red
+                    ctx.fill();
+                }
+
+                ctx.restore();
+            }
+
+            update(deltaTime) {
+                // Handle blinking/invincibility
+                if (this.blinking) {
+                    this.blinkTimer -= deltaTime;
+                    if (this.blinkTimer <= 0) {
+                        this.blinking = false;
+                    }
+                }
+
+                // Rotation
+                if (keys.ArrowLeft || touchRotateLeftActive) {
+                    this.angle -= PLAYER_TURN_SPEED;
+                }
+                if (keys.ArrowRight || touchRotateRightActive) {
+                    this.angle += PLAYER_TURN_SPEED;
+                }
+
+                // Thrust
+                this.thrusting = (keys.ArrowUp || touchThrustActive);
+
+                if (this.thrusting) {
+                    this.velocity.x += Math.cos(this.angle) * PLAYER_THRUST_POWER;
+                    this.velocity.y += Math.sin(this.angle) * PLAYER_THRUST_POWER;
+
+                    // Cap max speed
+                    const speed = Math.sqrt(this.velocity.x * this.velocity.x + this.velocity.y * this.velocity.y);
+                    if (speed > PLAYER_MAX_SPEED) {
+                        this.velocity.x = (this.velocity.x / speed) * PLAYER_MAX_SPEED;
+                        this.velocity.y = (this.velocity.y / speed) * PLAYER_MAX_SPEED;
+                    }
+                } else {
+                    // Gradual deceleration
+                    this.velocity.x *= 0.98;
+                    this.velocity.y *= 0.98;
+                    if (Math.abs(this.velocity.x) < 0.01) this.velocity.x = 0;
+                    if (Math.abs(this.velocity.y) < 0.01) this.velocity.y = 0;
+                }
+
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+
+                // Screen wrapping
+                if (this.x < -this.radius) this.x = canvas.width + this.radius;
+                if (this.x > canvas.width + this.radius) this.x = -this.radius;
+                if (this.y < -this.radius) this.y = canvas.height + this.radius;
+                if (this.y > canvas.height + this.radius) this.y = -this.radius;
+            }
+
+            respawn() {
+                this.x = canvas.width / 2;
+                this.y = canvas.height / 2;
+                this.velocity = { x: 0, y: 0 };
+                this.angle = -Math.PI / 2;
+                this.blinking = true;
+                this.blinkTimer = this.invincibleDuration;
+            }
+        }
+
+        class Asteroid {
+            constructor(x, y, radius, velocityX, velocityY, numSegments = 10, offsetFactor = 0.5) {
+                this.x = x;
+                this.y = y;
+                this.radius = radius;
+                this.velocity = { x: velocityX, y: velocityY };
+                this.numSegments = numSegments;
+                this.offsetFactor = offsetFactor;
+                this.offsets = [];
+                this.angle = Math.random() * Math.PI * 2; // Initial random rotation
+                this.rotationSpeed = (Math.random() - 0.5) * 0.02; // Slow rotation
+
+                // Generate irregular shape
+                for (let i = 0; i < this.numSegments; i++) {
+                    this.offsets.push(Math.random() * this.radius * this.offsetFactor * 2 - this.radius * this.offsetFactor);
+                }
+
+                this.color = ASTEROID_COLORS[Math.floor(Math.random() * ASTEROID_COLORS.length)];
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 8; // Glowing effect
+
+                for (let i = 0; i < this.numSegments; i++) {
+                    const angle = (Math.PI * 2 / this.numSegments) * i + this.angle;
+                    const r = this.radius + this.offsets[i];
+                    ctx.lineTo(this.x + r * Math.cos(angle), this.y + r * Math.sin(angle));
+                }
+                ctx.closePath();
+                ctx.stroke();
+                ctx.shadowBlur = 0; // Reset shadow
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.angle += this.rotationSpeed;
+
+                // Screen wrapping
+                if (this.x < -this.radius) {
+                    this.x = canvas.width + this.radius;
+                    // If asteroid goes off screen AND it's a large one, decrease mess
+                    if (this.radius === ASTEROID_MAX_SIZE) {
+                        decreaseMessMeter(MESS_MISSED_ASTEROID_PENALTY);
+                    }
+                }
+                if (this.x > canvas.width + this.radius) {
+                    this.x = -this.radius;
+                    if (this.radius === ASTEROID_MAX_SIZE) {
+                        decreaseMessMeter(MESS_MISSED_ASTEROID_PENALTY);
+                    }
+                }
+                if (this.y < -this.radius) {
+                    this.y = canvas.height + this.radius;
+                    if (this.radius === ASTEROID_MAX_SIZE) {
+                        decreaseMessMeter(MESS_MISSED_ASTEROID_PENALTY);
+                    }
+                }
+                if (this.y > canvas.height + this.radius) {
+                    this.y = -this.radius;
+                    if (this.radius === ASTEROID_MAX_SIZE) {
+                        decreaseMessMeter(MESS_MISSED_ASTEROID_PENALTY);
+                    }
+                }
+            }
+        }
+
+        class Projectile {
+            constructor(x, y, velocityX, velocityY) {
+                this.x = x;
+                this.y = y;
+                this.radius = PROJECTILE_SIZE;
+                this.velocity = { x: velocityX, y: velocityY };
+                this.life = 60; // Frames before it disappears
+            }
+
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2, false);
+                ctx.fillStyle = PROJECTILE_COLOR;
+                ctx.fill();
+                ctx.closePath();
+            }
+
+            update() {
+                this.x += this.velocity.x;
+                this.y += this.velocity.y;
+                this.life--;
+
+                // Screen wrapping for projectiles too
+                if (this.x < -this.radius) this.x = canvas.width + this.radius;
+                if (this.x > canvas.width + this.radius) this.x = -this.radius;
+                if (this.y < -this.radius) this.y = canvas.height + this.radius;
+                if (this.y > canvas.height + this.radius) this.y = -this.radius;
+            }
+        }
+
+        class PowerUp {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.radius = POWER_UP_SIZE;
+                this.color = POWER_UP_COLOR;
+                this.rotation = 0;
+                this.rotationSpeed = 0.05; // Visual rotation
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+
+                // Draw as a diamond (rotated square)
+                ctx.beginPath();
+                ctx.moveTo(0, -this.radius);
+                ctx.lineTo(this.radius, 0);
+                ctx.lineTo(0, this.radius);
+                ctx.lineTo(-this.radius, 0);
+                ctx.closePath();
+                ctx.fillStyle = this.color;
+                ctx.fill();
+                ctx.strokeStyle = '#FFFFFF';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                ctx.restore();
+            }
+
+            update() {
+                this.rotation += this.rotationSpeed;
+                // No movement, they just appear where asteroid was destroyed
+            }
+        }
+
+        class JuiceBoltExplosion {
+            constructor() {
+                this.maxRadius = Math.max(canvas.width, canvas.height) * 0.7; // Expands to cover screen
+                this.currentRadius = 0;
+                this.speed = 15; // How fast it expands
+                this.opacity = 1;
+                this.life = 1; // 0 to 1, for fading
+                this.lines = []; // For the "electric shock" lines
+                this.numLines = 20;
+
+                for(let i = 0; i < this.numLines; i++) {
+                    this.lines.push({
+                        angle: Math.random() * Math.PI * 2,
+                        length: Math.random() * 0.5 + 0.5 // 0.5 to 1.0 of current radius
+                    });
+                }
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(canvas.width / 2, canvas.height / 2); // Draw from center
+
+                // Draw main expanding circle
+                ctx.beginPath();
+                ctx.arc(0, 0, this.currentRadius, 0, Math.PI * 2);
+                ctx.strokeStyle = `rgba(0, 255, 255, ${this.opacity})`; // Cyan glow
+                ctx.lineWidth = 5 + (1 - this.life) * 10; // Wider at start
+                ctx.shadowColor = `rgba(0, 255, 255, ${this.opacity})`;
+                ctx.shadowBlur = 20 * this.life; // Fades out blur
+                ctx.stroke();
+                
+                // Draw electric lines
+                ctx.strokeStyle = `rgba(255, 255, 255, ${this.opacity * 0.8})`; // White lines
+                ctx.lineWidth = 2 + (1 - this.life) * 3;
+                this.lines.forEach(line => {
+                    const x1 = Math.cos(line.angle) * this.currentRadius * 0.5;
+                    const y1 = Math.sin(line.angle) * this.currentRadius * 0.5;
+                    const x2 = Math.cos(line.angle) * this.currentRadius * line.length;
+                    const y2 = Math.sin(line.angle) * this.currentRadius * line.length;
+                    ctx.beginPath();
+                    ctx.moveTo(x1, y1);
+                    ctx.lineTo(x2, y2);
+                    ctx.stroke();
+                });
+
+                ctx.shadowBlur = 0; // Reset shadow
+                ctx.restore();
+            }
+
+            update(deltaTime) {
+                this.currentRadius += this.speed * (deltaTime / 16.67); // Scale with deltaTime
+                this.life = 1 - (this.currentRadius / this.maxRadius);
+                this.opacity = this.life;
+
+                if (this.currentRadius > this.maxRadius) {
+                    return false; // Indicate animation is finished
+                }
+                return true; // Indicate animation is ongoing
+            }
+        }
+
+
+        // --- Game Functions ---
+
+        function initGame() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+
+            player = new Player(canvas.width / 2, canvas.height / 2);
+            player.respawn(); // Initial invincibility
+
+            asteroids = [];
+            projectiles = [];
+            powerUps = [];
+            explosions = []; // Clear any old explosions
+            score = 0;
+            messMeter = MAX_MESS; // Start mess meter at full (100%)
+            juiceBoltCharges = 0; // Reset charges
+            
+            gameActive = true;
+            updateUI();
+            gameOverOverlay.classList.add('hidden');
+
+            spawnInitialAsteroids(4); // Start with 4 large asteroids
+
+            // Ensure previous animation frame is cancelled
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            lastFrameTime = performance.now(); // Reset last frame time for accurate deltaTime
+            gameLoop();
+        }
+
+        function resizeCanvas() {
+            const container = document.querySelector('.game-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        let lastFrameTime = performance.now();
+        function gameLoop(currentTime = performance.now()) {
+            if (!gameActive) {
+                return;
+            }
+
+            const deltaTime = currentTime - lastFrameTime;
+            lastFrameTime = currentTime;
+
+            update(deltaTime);
+            draw();
+
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        function update(deltaTime) {
+            // Decrease mess passively
+            decreaseMessMeter(MESS_PASSIVE_DECREASE_RATE * (deltaTime / 1000)); // Decrease per second
+
+            player.update(deltaTime);
+
+            // Update asteroids
+            for (let i = asteroids.length - 1; i >= 0; i--) {
+                asteroids[i].update();
+            }
+
+            // Update projectiles
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                projectiles[i].update();
+                if (projectiles[i].life <= 0) {
+                    projectiles.splice(i, 1);
+                }
+            }
+
+            // Update power-ups
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                powerUps[i].update();
+            }
+
+            // Update explosions
+            for (let i = explosions.length - 1; i >= 0; i--) {
+                const animationActive = explosions[i].update(deltaTime);
+                if (!animationActive) {
+                    explosions.splice(i, 1);
+                }
+            }
+
+
+            // Handle player shooting
+            if ((keys.Space || touchShootActive) && (performance.now() - lastShotTime > FIRE_RATE)) {
+                fireProjectile();
+                lastShotTime = performance.now();
+            }
+
+            checkCollisions();
+
+            // If no asteroids, spawn more
+            if (asteroids.length === 0 && gameActive) {
+                spawnInitialAsteroids(Math.min(10, 4 + Math.floor(score / 500))); // Spawn more as score increases
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height); // Clear the entire canvas
+
+            // Draw background stars (simple dots)
+            ctx.fillStyle = '#ccc';
+            for (let i = 0; i < 50; i++) {
+                ctx.beginPath();
+                ctx.arc(Math.random() * canvas.width, Math.random() * canvas.height, 1, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            player.draw();
+            asteroids.forEach(a => a.draw());
+            projectiles.forEach(p => p.draw());
+            powerUps.forEach(p => p.draw());
+            explosions.forEach(e => e.draw()); // Draw explosions on top
+        }
+
+        function spawnInitialAsteroids(count) {
+            for (let i = 0; i < count; i++) {
+                let x, y;
+                const buffer = 150; // Extra buffer from screen edge to spawn asteroids further away
+                // Spawn randomly outside the visible canvas area
+                const spawnChoice = Math.floor(Math.random() * 4); // 0=top, 1=right, 2=bottom, 3=left
+
+                let startX, startY;
+                if (spawnChoice === 0) { // Top
+                    startX = Math.random() * canvas.width;
+                    startY = -ASTEROID_MAX_SIZE - buffer;
+                } else if (spawnChoice === 1) { // Right
+                    startX = canvas.width + ASTEROID_MAX_SIZE + buffer;
+                    startY = Math.random() * canvas.height;
+                } else if (spawnChoice === 2) { // Bottom
+                    startX = Math.random() * canvas.width;
+                    startY = canvas.height + ASTEROID_MAX_SIZE + buffer;
+                } else { // Left
+                    startX = -ASTEROID_MAX_SIZE - buffer;
+                    startY = Math.random() * canvas.height;
+                }
+
+                const speed = Math.random() * ASTEROID_MAX_SPEED * 0.6 + 0.3; // Make initial asteroids slower
+                // Aim generally towards the center of the canvas, but with some randomness
+                const targetAngle = Math.atan2(canvas.height / 2 - startY, canvas.width / 2 - startX);
+                const velocityAngle = targetAngle + (Math.random() - 0.5) * Math.PI * 0.6; // +- 54 degrees deviation
+                
+                const velocityX = Math.cos(velocityAngle) * speed;
+                const velocityY = Math.sin(velocityAngle) * speed;
+
+                asteroids.push(new Asteroid(startX, startY, ASTEROID_MAX_SIZE, velocityX, velocityY));
+            }
+        }
+
+        function fireProjectile() {
+            // Get the muzzle position
+            const muzzleX = player.x + Math.cos(player.angle) * player.radius;
+            const muzzleY = player.y + Math.sin(player.angle) * player.radius;
+
+            // Calculate projectile velocity based on player's angle
+            const velocityX = Math.cos(player.angle) * PROJECTILE_SPEED;
+            const velocityY = Math.sin(player.angle) * PROJECTILE_SPEED;
+
+            projectiles.push(new Projectile(muzzleX, muzzleY, velocityX, velocityY));
+        }
+
+        function checkCollisions() {
+            // Projectile-Asteroid collisions
+            for (let i = projectiles.length - 1; i >= 0; i--) {
+                const projectile = projectiles[i];
+                for (let j = asteroids.length - 1; j >= 0; j--) {
+                    const asteroid = asteroids[j];
+
+                    const distance = Math.hypot(projectile.x - asteroid.x, projectile.y - asteroid.y);
+
+                    if (distance < projectile.radius + asteroid.radius) {
+                        // Collision! Remove projectile
+                        projectiles.splice(i, 1);
+                        score += 10; // Basic score for hit
+
+                        // Break asteroid into smaller pieces if large enough
+                        if (asteroid.radius > ASTEROID_MIN_SIZE) {
+                            const newRadius = asteroid.radius * ASTEROID_BREAK_FACTOR;
+                            const numNewAsteroids = (asteroid.radius === ASTEROID_MAX_SIZE) ? 3 : 2; // Large breaks into 3, medium into 2
+
+                            for (let k = 0; k < numNewAsteroids; k++) {
+                                const speed = Math.random() * ASTEROID_MAX_SPEED * 1.5 + 0.5; // Faster new pieces
+                                const angle = Math.random() * Math.PI * 2;
+                                const velocityX = Math.cos(angle) * speed;
+                                const velocityY = Math.sin(angle) * speed;
+                                asteroids.push(new Asteroid(asteroid.x, asteroid.y, newRadius, velocityX, velocityY));
+                            }
+                        } else {
+                            // Only spawn power-up if smallest asteroid is destroyed
+                            if (Math.random() < POWER_UP_DROP_CHANCE) {
+                                powerUps.push(new PowerUp(asteroid.x, asteroid.y));
+                            }
+                        }
+                        // Remove original asteroid
+                        asteroids.splice(j, 1);
+                        break; // Break inner loop to avoid checking already removed projectile against more asteroids
+                    }
+                }
+            }
+
+            // Player-Asteroid collisions
+            if (!player.blinking) { // Only check if player is not invincible
+                for (let i = asteroids.length - 1; i >= 0; i--) {
+                    const asteroid = asteroids[i];
+                    const distance = Math.hypot(player.x - asteroid.x, player.y - asteroid.y);
+
+                    if (distance < player.radius + asteroid.radius) {
+                        // Player hit! Decrease mess meter
+                        decreaseMessMeter(MESS_PLAYER_HIT_DAMAGE); // Player takes damage
+                        updateUI();
+                        // Player still respawns with invincibility, but it's health based now
+                        player.respawn(); 
+                        // No need to remove asteroid on player hit, it continues
+                        break; // Only one player collision per frame
+                    }
+                }
+            }
+
+            // Player-PowerUp collisions
+            for (let i = powerUps.length - 1; i >= 0; i--) {
+                const powerUp = powerUps[i];
+                const distance = Math.hypot(player.x - powerUp.x, player.y - powerUp.y);
+
+                if (distance < player.radius + powerUp.radius) {
+                    juiceBoltCharges++;
+                    increaseMessMeter(MESS_POWERUP_HEAL); // Power-up now heals!
+                    updateUI(); // Update UI to show charge count and healed mess
+                    powerUps.splice(i, 1); // Remove collected power-up
+                }
+            }
+        }
+
+        function decreaseMessMeter(amount) {
+            messMeter = Math.max(0, messMeter - amount); // Decrease mess, clamp at 0
+            updateUI();
+            if (messMeter <= 0 && gameActive) { // Game over when mess reaches 0
+                endGame();
+            }
+        }
+
+        function increaseMessMeter(amount) {
+            messMeter = Math.min(MAX_MESS, messMeter + amount); // Increase mess (heal), clamp at MAX_MESS
+            updateUI();
+        }
+
+        function updateUI() {
+            scoreValueElem.textContent = score;
+            juiceBoltButton.textContent = `Juice Bolt! (${juiceBoltCharges})`;
+            juiceBoltButton.disabled = juiceBoltCharges <= 0;
+            if (juiceBoltCharges > 0) {
+                juiceBoltButton.classList.add('animate-pulse');
+            } else {
+                juiceBoltButton.classList.remove('animate-pulse');
+            }
+
+            // Update Mess Meter UI
+            // Fill width corresponds to remaining health percentage
+            messMeterFillElem.style.width = `${messMeter}%`;
+            // Warning if messMeter is low (e.g., below 30%)
+            if (messMeter <= MESS_WARNING_THRESHOLD) {
+                messMeterFillElem.classList.add('warning');
+            } else {
+                messMeterFillElem.classList.remove('warning');
+            }
+        }
+
+        function activateJuiceBolt() {
+            if (juiceBoltCharges > 0 && gameActive) {
+                juiceBoltCharges--;
+                messMeter = MAX_MESS; // Juice Bolt now fully heals mess meter
+                updateUI();
+                explosions.push(new JuiceBoltExplosion()); // Add the animation
+                
+                // Destroy all asteroids
+                asteroids.forEach(asteroid => {
+                    score += 10; // Bonus score for clearing
+                });
+                asteroids = []; // Clear all asteroids
+            }
+        }
+
+        function endGame() {
+            gameActive = false;
+            cancelAnimationFrame(animationFrameId);
+            finalScoreElem.textContent = `Final Score: ${score}`;
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        restartButton.addEventListener('click', () => {
+            initGame();
+        });
+
+        juiceBoltButton.addEventListener('click', activateJuiceBolt);
+
+
+        // --- Input Event Listeners ---
+        document.addEventListener('keydown', (e) => {
+            // Prevent default actions for keys that might scroll the page
+            if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+                e.preventDefault();
+            }
+
+            // Map arrow keys for desktop
+            if (e.key === 'ArrowLeft') {
+                keys.ArrowLeft = true;
+            } else if (e.key === 'ArrowRight') {
+                keys.ArrowRight = true;
+            } else if (e.key === 'ArrowUp') {
+                keys.ArrowUp = true;
+            } else if (e.key === ' ') { // Spacebar only for fire
+                keys.Space = true; 
+            }
+        }, false);
+
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') {
+                keys.ArrowLeft = false;
+            } else if (e.key === 'ArrowRight') {
+                keys.ArrowRight = false;
+            } else if (e.key === 'ArrowUp') {
+                keys.ArrowUp = false;
+            } else if (e.key === ' ') { // Spacebar only for fire
+                keys.Space = false;
+            }
+        }, false);
+
+        // Mobile touch controls (simplified, assuming areas of the screen for controls)
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameActive) return;
+            e.preventDefault(); // Prevent scrolling/zooming
+
+            const touchX = e.touches[0].clientX;
+            const touchY = e.touches[0].clientY;
+            const canvasRect = canvas.getBoundingClientRect();
+
+            // Clear previous touch states to avoid conflicts
+            touchRotateLeftActive = false;
+            touchRotateRightActive = false;
+            touchThrustActive = false;
+            touchShootActive = false;
+
+            // Define touch zones
+            if (touchY < canvasRect.height * 0.4) { // Top 40% to shoot
+                touchShootActive = true;
+            } else if (touchX < canvasRect.width * 0.3) { // Bottom-left 30% for rotate left
+                touchRotateLeftActive = true;
+            } else if (touchX > canvasRect.width * 0.7) { // Bottom-right 30% for rotate right
+                touchRotateRightActive = true;
+            } else { // Middle 40% of bottom for thrust
+                touchThrustActive = true;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            // Reset all touch specific controls on any touchend to prevent "stuck" inputs
+            touchShootActive = false;
+            touchRotateLeftActive = false;
+            touchRotateRightActive = false;
+            touchThrustActive = false;
+        });
+
+
+        // Start the game when the window loads
+        window.onload = initGame;
+    </script>
+</body>
+</html>
